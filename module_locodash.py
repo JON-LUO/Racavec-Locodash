@@ -70,7 +70,7 @@ def read_activities():
         #Get earliest date on record
         min_record_date = s_to_date(df_strava_travs.iloc[0]['event_date'])
 
-    #### Get Locations spreadsheet notes. If it does not exist, create empty dataframe
+    #### Get Locations spreadsheet notes (create your own). If it does not exist, create empty dataframe
     #Location notes should have the following columns ['name', 'coordinates', 'type', 'notes']
     try:
         df_locations = pd.read_excel(cwd + '\Locations.xlsx', engine='openpyxl')

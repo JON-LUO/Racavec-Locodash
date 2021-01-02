@@ -1,6 +1,5 @@
 *.pyc
 venv
-Pipfile
 private.py
 athlete.txt
 strava_activities.csv

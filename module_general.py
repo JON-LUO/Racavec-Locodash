@@ -71,7 +71,7 @@ def get_len_streak(items):
     if len(items)==1: return 1  #If list has one elem, longest streak is 1
     streak_record=1     #Longest streak to be returned
     streak=1
-    curr=0          #Current index
+    curr=0      
     while curr < len(items)-1:
         if items[curr]+1 == items[curr+1]:
             streak+=1

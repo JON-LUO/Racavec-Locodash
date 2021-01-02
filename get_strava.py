@@ -103,7 +103,7 @@ def get_strava_data(user_auth_code):
 
 
     ############ GET ATHLETE INFORMATION #############################################
-    #In this sample, I am pulling the athlete/user name
+    #In this sample, I am pulling the athlete/user name and writing to a file. Modify to add more data points.
     r = requests.get('https://www.strava.com/api/v3/athlete' + '?access_token=' + access_token)
     r = r.json()
     with open('athlete.txt', 'w') as output_file:

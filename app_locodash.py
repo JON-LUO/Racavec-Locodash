@@ -242,7 +242,7 @@ def navig_date(prevMonth, nextMonth, prevSpan, nextSpan, showAll):
         nextMonth updates span to first to last day of next month.
         prevSpan and nextSpan add/subtrack from start and end date respectively
 
-        This CALLBACK1.-1 will automatically call CALLBACK1 to update global date variables'''
+        This CALLBACK1.-1 will automatically call CALLBACK1 to update global dates'''
     start = gbl_startdate
     end = gbl_enddate
     span = end - start + timedelta(days=1)
