@@ -1,0 +1,9 @@
+*.pyc
+venv
+Pipfile
+private.py
+athlete.txt
+strava_activities.csv
+strava_splits_imperial.csv
+strava_splits_metric.csv
+map.html
