@@ -6,7 +6,7 @@ from get_strava import *
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 dash_app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = dash_app.server
-dash_app.title = 'Racavec Locodash - Fitness Dashboard'
+dash_app.title = 'Locomotion Fitness Dashboard'
 app_URL = 'http://127.0.0.1:8050'
 
 user_auth_code = 'No Auth Code'
@@ -14,7 +14,7 @@ user_auth_code = 'No Auth Code'
 @server.route('/exchange_token')
 def get_token():
     user_auth_code = request.args.get('code')
-    #Run get strava data with the user auth code. Saves most recent data to file.
+    #Run get strava data with the user auth code. Saves most recent data to file. Should only run when redirected from Strava login when getting new auth code
     get_strava_data(user_auth_code)
     return redirect(app_URL)
 
@@ -22,7 +22,7 @@ def get_token():
 ############ SET PARAMETERS ####################################################################################
 trav_actv_types = gen_ordered_setlist(df_strava_travs['type'].tolist())         #List of all travel activity types. For slicer.
 view_modes = ['Table Only', 'Standard Map', 'Heat Map', 'Distance over Time']
-mainview_style_default = {'width':'90%', 'height':'550px',}
+mainview_style_default = {'width':'90%', 'height':'800px',}
 
 
 ############ LAYOUT #######################################################################################################
@@ -68,7 +68,7 @@ dash_app.layout = html.Div(children=[
                          ######## DATE SELECTION ITEMS ########
                             html.Label('Dates Selection',
                                 style={'color': 'black', 'fontWeight': 'bold',}),
-                            html.Div( id = 'timespan', style = {'fontSize': '14px', 'color': 'rgb(75,75,75)',},
+                            html.Div( id = 'timespan', style = {'fontSize': '14px', 'color': 'rgb(75,75,75)',}, #children = 'Span: ' + str(days_span) + ' days',
                             ),
                             dcc.DatePickerRange(
                                 id='date_slicer',
@@ -156,6 +156,8 @@ dash_app.layout = html.Div(children=[
                            'height': '850px', 'width': '100%',
                            'marginLeft': '0px'},
                         children = [
+                            # html.Label('Athlete Statistics',
+                            #     style={'color': 'black', 'fontWeight': 'bold',}),
                             dash_table.DataTable(
                                 id = 'summary_rpt_tbl',
                                 style_table = {'width':'90%', 'border': '1px solid ' + str(color2)},
@@ -185,7 +187,7 @@ dash_app.layout = html.Div(children=[
                         style = {'backgroundColor': 'rgb(225,225,225)','height': '10px', 'width': '100%',}),
                     dash_table.DataTable(id = 'recent_actvs_tbl',
                         style_table = {'width':'90%', 'border': '1px solid ' + str(color2)},
-                        style_cell = {'maxWidth': '20px',
+                        style_cell = {'maxWidth': '20px', #!! May make some modifications based on field, some field lengths can be expected to be fixed. Add tooltips
                             'overflow': 'hidden', 'textOverflow': 'ellipsis',},
                         style_header = {'backgroundColor': color2, 'color': 'white', 'fontWeight': 'bold', 'fontSize': '14px', 'textAlign': 'left',},
                         style_data = {'fontSize': '14px'},
@@ -200,7 +202,7 @@ dash_app.layout = html.Div(children=[
 ])
 
 ############ FUNCTIONS ################################################################################################################
-def update_gbl_date(start, end):
+def update_gbl_date(start, end):        #Created for callback 1. Has to be in this file due to changing global variable
     ''' takes strings as inputs '''
     global gbl_startdate
     gbl_startdate = datetime.strptime(start, '%Y-%m-%d').date()
@@ -215,13 +217,16 @@ Output('CB1_-1:2', 'children'),     #Dummy i/o
 [Input('CB0', 'children')]
 )
 def callback0(input):
-    ''' Initial load should kickstart all necessary operations. Starting with the most updated load of data '''
+    ''' Initial load should kickstart all necessary operations. Starting with the most updated load of data:
+        strava actvs, min date of strava acts, and locations '''
+    #These global variables are initially imported from the module.
     #Update these global variables in the scope of this script file for the entire dash program at every load
     global df_strava_travs
     global min_record_date
     global df_locations
     global athlete_name
     df_strava_travs, min_record_date, df_locations, athlete_name = read_activities()
+    print('[JL] > Callback0')
     return None
 
 
@@ -242,7 +247,7 @@ def navig_date(prevMonth, nextMonth, prevSpan, nextSpan, showAll):
         nextMonth updates span to first to last day of next month.
         prevSpan and nextSpan add/subtrack from start and end date respectively
 
-        This CALLBACK1.-1 will automatically call CALLBACK1 to update global dates'''
+        This CALLBACK1.-1 will automatically call CALLBACK1 to update global date variables'''
     start = gbl_startdate
     end = gbl_enddate
     span = end - start + timedelta(days=1)
@@ -273,12 +278,12 @@ def navig_date(prevMonth, nextMonth, prevSpan, nextSpan, showAll):
 [Output('athleteUserText', 'children'),
 Output('actv_type_slicer', 'options'),
 Output('actv_type_slicer', 'value')],
-[Input('CB1_-1:2', 'children'),] #dummy
+[Input('CB1_-1:2', 'children'),] #dummy input
 )
 def actv_type_update(input):
-    ''' When read in new data, change:
-        1. athlete name
-        2. actv type options and value, must reflect that change for proper slicing '''
+    ''' When read in new data,
+        1. athlete name must change
+        2. actv type options and value must reflect that change for proper slicing '''
     trav_actv_types = gen_ordered_setlist(df_strava_travs['type'].tolist())
     options=[{'label': actv_type, 'value': actv_type} for actv_type in trav_actv_types]
     value=trav_actv_types
@@ -313,7 +318,7 @@ def callback_1(start, end, actv_types, dist_min, dist_max, view_mode):
     #Update global variables start and end date based on what the date slicer takes
     update_gbl_date(start, end)
 
-    today = date.today()
+    today = date.today() #Update when ran. Save today's date in case it needs to be used for anything.
     start = datetime.strptime(start,'%Y-%m-%d').date()
     end = datetime.strptime(end,'%Y-%m-%d').date()
     #Create sliced activity dataframe
@@ -355,5 +360,8 @@ def calc_days_span(start, end):
     return s_to_easyDate(start) + ' - ' + s_to_easyDate(end) + '.' + ' ('  + str(span) + ' days)'
 
 
+
+
 if __name__ == '__main__':
     dash_app.run_server(debug=True)
+    callback0('input')

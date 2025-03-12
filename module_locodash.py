@@ -3,6 +3,7 @@ from module_general import *
 import numpy as np
 import pandas as pd
 import os
+#from datetime import datetime, date, timedelta
 import folium
 from folium.plugins import HeatMap, HeatMapWithTime
 import polyline
@@ -30,12 +31,14 @@ gbl_enddate = today
 min_day = date(2000, 1, 1)
 
 #### Units
-measure_systems = [['Imperial', 'mi'], ['Metric', 'km']]        #Default measurement systems and primary unit
-df_measure_systems = pd.DataFrame(measure_systems, columns = ['system', 'unit']).set_index('system', drop=True)
+measure_systems = [['Imperial', 'mi', 'ft'], ['Metric', 'km', 'm']]        #Default measurement systems and primary unit
+df_measure_systems = pd.DataFrame(measure_systems, columns = ['system', 'unit', 'unitB']).set_index('system', drop=True)
 #[!!] Set the default global measurement system here
 gbl_measure_system = 'Imperial'
 gbl_measure_unit = df_measure_systems.loc[gbl_measure_system][0]
-
+def set_measurement_system(system): #!!
+    ''' For future enhancement. The function will probably return the system and unit name. It may update the global variable '''
+    return
 
 #### Colors
 color1 = 'rgb(1, 51, 26)'
@@ -61,6 +64,8 @@ def read_activities():
     try:
         df_strava_activities = pd.read_csv('strava_activities.csv', index_col='id')
     except FileNotFoundError:       #Create an empty dataframe with the same necessary columns
+        #data = np.full((1, len(strava_pulledFormatted_col)), 'No Data')
+        #df_strava_travs = pd.DataFrame(data, columns=strava_pulledFormatted_col)!!!
         df_strava_travs = pd.DataFrame(columns=strava_pulledFormatted_col)
         min_record_date = min_day
     else:
@@ -70,25 +75,27 @@ def read_activities():
         #Get earliest date on record
         min_record_date = s_to_date(df_strava_travs.iloc[0]['event_date'])
 
-    #### Get Locations spreadsheet notes (create your own). If it does not exist, create empty dataframe
+    #### Get Locations spreadsheet notes. If it does not exist, create empty dataframe
     #Location notes should have the following columns ['name', 'coordinates', 'type', 'notes']
     try:
         df_locations = pd.read_excel(cwd + '\Locations.xlsx', engine='openpyxl')
         df_locations['coord'] = df_locations['coordinates'].str.split(',')      #convert string of coordinates to array
     except FileNotFoundError: df_locations = pd.DataFrame(columns=[])       #Create empty dataframe
 
-    #Get user name
+    #Get userAthlete name
     try:
         with open('athlete.txt', 'r') as f:
             athlete_name = f.read()
     except FileNotFoundError:
         athlete_name = 'none'
 
+    print('[JL] > Read info and strava activity.')
     return df_strava_travs, min_record_date, df_locations, athlete_name
 
 ############# MAINVIEW AND REPORT GENERATORS #########################################################################################
 def gen_stats_and_tblview(df_strava_travs_sliced, date_start, date_end):
-    ''' takes in relevant df slice of activities and datetime objects. Returns: statistics df, activities df. '''
+    ''' takes in relevant df slice of activities and datetime objects. Returns: statistics df, activities df.
+        Also updates global today variable '''
     global today
     today = date.today()
 
@@ -103,10 +110,12 @@ def gen_stats_and_tblview(df_strava_travs_sliced, date_start, date_end):
     df_trav_stats.loc['Total Distance'] = ['Total Distance Recorded'] + [str(round(m_to_mi(df_strava_travs_sliced['distance'].sum()), 1)) + ' miles']
     time_ttl = seconds_to_HrMinSec(df_strava_travs_sliced['elapsed_time'].sum())
     df_trav_stats.loc['Total Recorded Time'] = ['Total Recorded Time'] + [time_ttl[0] + 'hr ' + time_ttl[1] + 'min']   #Using ELAPSED time
+    elevGain_ttl = round(m_to_ft(df_strava_travs_sliced['total_elevation_gain'].sum()), 1)
+    df_trav_stats.loc['Total Elevation Gain'] = ['Total Elevation Gain'] + [str(elevGain_ttl) + ' ft']
     df_trav_stats.loc['Max Distance in Single Event'] = ['Max Distance in Single Event'] + [str(round(m_to_mi(df_strava_travs_sliced['distance'].max()), 1)) + ' miles']
     time_max = seconds_to_HrMinSec(df_strava_travs_sliced['elapsed_time'].max())
     df_trav_stats.loc['Max Recorded Time in Single Event'] = ['Max Recorded Time in Single Event'] + [time_max[0] + 'hr ' + time_max[1] + 'min']
-    #foot_elevGain_ttl = round(line_report_actvs['total_elevation_gain'].sum(), 1)
+
     ####BLOCK 2:
     actv_rate = len(set(df_strava_travs_sliced['event_date'])) / ((date_end-date_start).days+1) #Unique days divided by length of time period slice, rounded to 3 decimal
     df_trav_stats.loc['Activity Rate (by days)'] = ['Activity Rate (by days)'] + [str(round(100*actv_rate, 1))+'%']
@@ -115,17 +124,18 @@ def gen_stats_and_tblview(df_strava_travs_sliced, date_start, date_end):
 
 
     ######## GENERATE RECENT ACTIVITY REPORTING ########
-    df_actvs_tbl = df_strava_travs_sliced[['event_date', 'name', 'type', 'distance', 'elapsed_time', 'average_heartrate']]
+    df_actvs_tbl = df_strava_travs_sliced[['event_date', 'name', 'type', 'distance', 'elapsed_time', 'average_heartrate']] #!! Add elevation gain too. Also a tooltip in table that leads to strava
     #Reverse the order of rows to display most recent data on top
     df_actvs_tbl = df_actvs_tbl.iloc[::-1]
     #Format data for display
+    #The order of these statements is crucial in ensuring the right calculation (e.g. Pace is dependent on elapsed time and distance)
     df_actvs_tbl['event_date'] = df_actvs_tbl['event_date'].apply(s_to_easyDate)
     df_actvs_tbl['distance'] = df_actvs_tbl['distance'].apply(m_to_mi).round(1)
     df_actvs_tbl['pace'] = df_actvs_tbl.apply(lambda x: calc_pace(x['elapsed_time'], x['distance'], add_lead=True, digital=True), axis=1)
     df_actvs_tbl['elapsed_time'] = df_actvs_tbl['elapsed_time'].apply(seconds_to_HrMinSec, add_lead=True, digital=True)
     df_actvs_tbl = df_actvs_tbl[['event_date', 'name', 'type', 'distance', 'pace', 'elapsed_time', 'average_heartrate']]    #Reorder the columns
     df_actvs_tbl.columns = [x.title().replace('_',' ') for x in df_actvs_tbl.columns]     #Format for userfriendly reading: Captilizaton and spacing
-    df_actvs_tbl.rename(columns={'Distance': 'Distance ' + '(' + gbl_measure_unit + ')'}, inplace=True)
+    df_actvs_tbl.rename(columns={'Distance': 'Distance ' + '(' + gbl_measure_unit + ')'}, inplace=True)    #add measurement unit to header
 
     return df_trav_stats, df_actvs_tbl
 
@@ -134,7 +144,7 @@ def gen_standard_map(df_strava_travs_sliced):
     #First handle empty sliced df case. Create a generic zoomed out map with additional features
     if len(df_strava_travs_sliced)==0:
         m = folium.Map(location=[36,-108], zoom_start=4, control_scale=True)
-        folium.TileLayer('stamenterrain').add_to(m)
+        folium.TileLayer('Stamen Terrain', attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.").add_to(m)
         m.save('map.html')  #Save map without routes or markers and create dash layout
         return html.Iframe(id='mainview', srcDoc=open('map.html','r').read(), width='100%', height='100%')
     #Slice not empty:
@@ -142,7 +152,7 @@ def gen_standard_map(df_strava_travs_sliced):
     init_coord = df_strava_travs_sliced.iloc[-1]['start_latlng']
     init_coord = ast.literal_eval(init_coord)
     m = folium.Map(location=init_coord, zoom_start=12, control_scale=True)
-    folium.TileLayer('stamenterrain').add_to(m)
+    folium.TileLayer('Stamen Terrain', attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.").add_to(m)
     #Construct polylines
     for i in df_strava_travs_sliced.index:
         route_coord = polyline.decode(df_strava_travs_sliced.loc[i]['map.summary_polyline'])
@@ -161,6 +171,7 @@ def gen_standard_map(df_strava_travs_sliced):
     ######## Show activity start markers if <= 60 routes sliced
     if len(df_strava_travs_sliced) <= 60:
         for i in df_strava_travs_sliced.index:
+            #trav_start_coord = (df_strava_travs_sliced.loc[i]['start_latlng'][1:-1]).split(', ')
             trav_start_coord = polyline.decode(df_strava_travs_sliced.loc[i]['map.summary_polyline'])[0]    #Get first coordinate from polyline as start
             folium.Marker(trav_start_coord,
                 tooltip=s_to_easyDate(df_strava_travs_sliced.loc[i]['event_date']) + ' - ' + str(df_strava_travs_sliced.loc[i]['name']),
@@ -176,7 +187,7 @@ def gen_heat_map(df_strava_travs_sliced):
     #First handle empty sliced df case. Create a generic zoomed out map with additional features
     if len(df_strava_travs_sliced)==0:
         m = folium.Map(location=[36,-108], zoom_start=4, control_scale=True)
-        folium.TileLayer('stamenterrain').add_to(m)
+        folium.TileLayer('Stamen Terrain', attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.").add_to(m)
         m.save('map.html')  #Save map without routes or markers and create dash layout
         return html.Iframe(id='mainview', srcDoc=open('map.html','r').read(), width='100%', height='100%')
     #Slice not empty:
@@ -184,28 +195,42 @@ def gen_heat_map(df_strava_travs_sliced):
     init_coord = df_strava_travs_sliced.iloc[-1]['start_latlng']
     init_coord = ast.literal_eval(init_coord)
     m = folium.Map(location=init_coord, zoom_start=12, control_scale=True)
-    folium.TileLayer('stamenterrain').add_to(m)
+    folium.TileLayer('Stamen Terrain', attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.").add_to(m)
     #Initilaize arrays to store heatmap parameters
     heat_coords = []
     heat_date_ind = []
+
+    # Set the number of coordinates per time step
+    coordinates_per_time_step = 10
+
     for i in df_strava_travs_sliced.index:
         route_coord = polyline.decode(df_strava_travs_sliced.loc[i]['map.summary_polyline'])
-        route_coord = [[i[0],i[1]] for i in route_coord]
-        #Estimate number of splits
-        cnt_splits = max(round(m_to_mi(df_strava_travs_sliced.loc[i]['distance'])),1)
-        coords_in_split = len(route_coord)//cnt_splits       #Count number of coorindates to include in split
-        route_coord =  [route_coord[x:x+coords_in_split] for x in range(0, len(route_coord), coords_in_split)]
-        heat_coords.extend(route_coord)        #Add coordinates into list
-        heat_date_ind.extend([s_to_easyDate(df_strava_travs_sliced.loc[i]['event_date'][0:10])] * len(route_coord))      #Get date as heatmap time index
+        route_coord = [[i[0],i[1]] for i in route_coord]        #convert from tuple format to list, best practice
+
+        # Split the route into chunks of the specified number of coordinates
+        chunks = [route_coord[x:x + coordinates_per_time_step] for x in range(0, len(route_coord), coordinates_per_time_step)]
+        # Add the coordinates and date to the lists
+        for chunk in chunks:
+            heat_coords.append(chunk)
+            heat_date_ind.append(s_to_easyDate(df_strava_travs_sliced.loc[i]['event_date'][0:10])) 
+
+        # #Estimate number of splits
+        # cnt_splits = max(round(m_to_mi(df_strava_travs_sliced.loc[i]['distance'])),1)
+        # coords_in_split = len(route_coord)//cnt_splits       #Count number of coorindates to include in split
+        # route_coord =  [route_coord[x:x+coords_in_split] for x in range(0, len(route_coord), coords_in_split)]
+        # heat_coords.extend(route_coord)        #Add coordinates into list
+        # heat_date_ind.extend([s_to_easyDate(df_strava_travs_sliced.loc[i]['event_date'][0:10])] * len(route_coord))      #Get date as heatmap time index
     heat_coords_flat = [item for sublist in heat_coords for item in sublist]
     #Construct HeatMap
     HeatMap(heat_coords_flat, radius=6).add_to(m)
     #Construct HeatMap with time
     HeatMapWithTime(heat_coords, heat_date_ind,
-        radius=12, min_opacity=2, max_opacity=4, min_speed=5, max_speed=12, speed_step=1).add_to(m)
-    #Save the map and create the mainview
+        radius=12, min_opacity=2, max_opacity=4, min_speed=5, max_speed=200, speed_step=1).add_to(m)
+    #Create the mainview
     m.save('map.html')
     return html.Iframe(id='mainview', srcDoc=open('map.html','r').read(), width='100%', height='100%')
+
+
 
 def gen_dist_over_time(df_strava_travs_sliced, date_start, date_end):
     ''' Takes sliced df, and dates in date() form. Returns bar chart of distance over time '''
@@ -224,8 +249,16 @@ def gen_dist_over_time(df_strava_travs_sliced, date_start, date_end):
     fig = fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide')
     return dcc.Graph(id='mainview', figure=fig, style={'width':'100%', 'height':'100%'})
 
+####Hydrogen Test Code
+## for i in df_strava_travs.index:
+#     #If event in selected date range, activity types, and distance range
+#     if ((min_day <= datetime.strptime(df_strava_travs.loc[i]['event_date'], '%Y-%m-%d').date() <= today) and
+#     (df_strava_travs.loc[i]['type'] in ['Run', 'Ride', 'Walk']) and
+#     (0 <= m_to_mi(df_strava_travs.loc[i]['distance']) <= 999)):
+#         df_strava_travs_sliced.loc[i] = df_strava_travs.loc[i]
+
 
 ############# EXECUTE ############
 
-#read activities
+#Load activities
 read_activities()
